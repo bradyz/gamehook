@@ -8,6 +8,8 @@
 #include "pybind11/pybind11.h"
 #include "pybind11/embed.h"
 #include "pybind11/stl.h"
+#include "pybind11/numpy.h"
+
 namespace py = pybind11;
 
 #pragma comment(lib,"d3dcompiler.lib")
@@ -77,6 +79,8 @@ struct BasePythonController {
 	std::shared_ptr<GPUMemory> readBuffer_1(Buffer b, size_t offset, size_t n, bool immediate = false);
 	std::shared_ptr<GPUMemory> readBuffer_2(Buffer b, const std::vector<size_t> & offset, const std::vector<size_t> & n, bool immediate = false);
 	size_t bufferSize(Buffer b);
+	py::array_t<uint8_t> getTarget(const std::string& name);
+
 	std::string gameState() const;
 	void command(const std::string & json);
 	std::shared_ptr<CBuffer> createCBuffer(const std::string & name, size_t max_size);
@@ -405,6 +409,7 @@ PYBIND11_EMBEDDED_MODULE(api, m) {
 		.def("read_buffer", &BasePythonController::readBuffer_2, py::call_guard<py::gil_scoped_release>())
 		.def("buffer_size", &BasePythonController::bufferSize, py::call_guard<py::gil_scoped_release>())
 		.def_property_readonly("game_state", &BasePythonController::gameState, py::call_guard<py::gil_scoped_release>())
+		.def("get_target", &BasePythonController::getTarget)
 		.def("command", &BasePythonController::command, py::call_guard<py::gil_scoped_release>())
 		.def("create_c_buffer", &BasePythonController::createCBuffer, py::call_guard<py::gil_scoped_release>())
 		.def("bind_c_buffer", &BasePythonController::bindCBuffer, py::call_guard<py::gil_scoped_release>())
@@ -608,15 +613,56 @@ struct PythonController : public GameController {
 	virtual bool onKillFocus() final {
 		return callAll<bool>(&Controller::on_kill_focus);
 	}
+
+	std::unordered_map<std::string, std::vector<uint8_t>> targetCache;
+	std::vector<std::string> capture_targets;
+	bool capture = false;
+
 	virtual void onBeginFrame(uint32_t frame_id) final {
+		capture_targets = listTargets();
+		capture = currentRecordingType() != NONE;
+
+		if (capture) {
+			for (const auto& t : capture_targets)
+				requestOutput(t);
+		}
+
 		callAll(&Controller::on_begin_frame, frame_id);
 	}
+
 	virtual void onPostProcess(uint32_t frame_id) final {
 		callAll(&Controller::on_post_process, frame_id);
 	}
+
 	virtual void onEndFrame(uint32_t frame_id) final {
+		if (capture) {
+			for (const auto &t : capture_targets)
+				capture &= targetAvailable(t);
+
+			if (capture) {
+				for (const auto& t : capture_targets) {
+					int W = defaultWidth();
+					int H = defaultHeight();
+					int C = outputChannels(t);
+
+					if (targetCache.find(t) == targetCache.end())
+						targetCache[t] = std::vector<uint8_t>(W * H * C * dataSize(outputType(t)));
+
+					readTarget(t, W, H, C, outputType(t), targetCache[t].data());
+				}
+			}
+		}
+
 		callAll(&Controller::on_end_frame, frame_id);
 	}
+
+	py::array_t<uint8_t> getTarget(const std::string &name) {
+		if (targetCache.find(name) == targetCache.end())
+			return py::array_t<uint8_t>();
+
+		return py::array_t<uint8_t>(targetCache[name].size(), targetCache[name].data());
+	}
+
 	virtual void onPresent(uint32_t frame_id) final {
 		callAll(&Controller::on_present, frame_id);
 		if (force_reload) {
@@ -697,6 +743,7 @@ std::shared_ptr<GPUMemory> BasePythonController::readBuffer_1(Buffer b, size_t o
 std::shared_ptr<GPUMemory> BasePythonController::readBuffer_2(Buffer b, const std::vector<size_t> & offset, const std::vector<size_t> & n, bool immediate) { return main_->readBuffer(b, offset, n, immediate); }
 size_t BasePythonController::bufferSize(Buffer b) { return main_->bufferSize(b); }
 std::string BasePythonController::gameState() const { return main_->gameState(); }
+py::array_t<uint8_t> BasePythonController::getTarget(const std::string &name) { return main_->getTarget(name); }
 void BasePythonController::command(const std::string & json) { main_->command(json); }
 std::shared_ptr<CBuffer> BasePythonController::createCBuffer(const std::string & name, size_t max_size) { return main_->createCBuffer(name, max_size); }
 void BasePythonController::bindCBuffer(std::shared_ptr<CBuffer> b) { main_->bindCBuffer(b); }
