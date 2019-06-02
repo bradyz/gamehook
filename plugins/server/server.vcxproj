@@ -86,6 +86,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>$(SolutionDir)\SDK;$(ProjectDir)\external\asio;$(ProjectDir)\external\simple-web-server;$(ProjectDir)\external\simple-websocket-server;$(ProjectDir)\external\openssl\include;$(IncludePath)</IncludePath>
     <TargetExt>.hk</TargetExt>
+    <ExecutablePath>C:\Program Files %28x86%29\Microsoft Visual Studio\Shared\Python36_64;$(ExecutablePath)</ExecutablePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

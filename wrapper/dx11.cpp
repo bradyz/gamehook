@@ -641,7 +641,7 @@ public: // Implementation
 		ASSERT(i != targets_.end());
 		auto t = rtv_id(view_id);
 		if (!t) {
-			LOG(WARN) << "Trying to copy non-existent render target!";
+			LOG(WARN) << "Trying to copy non-existent render target: " << name;
 			return;
 		}
 		if (!i->second) {
